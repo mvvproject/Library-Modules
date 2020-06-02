@@ -1,0 +1,853 @@
+;TR-DOS версия 5.31 (базовая версия 5.04T)
+;Adaptation (C) V.V.Matlash, 10.05.2004
+;Последнее редактирование: 14.03.2005
+;Уровень оптимизации кода: 1
+
+        ORG #8000
+@BASE   INCBIN "trd504t";Подгрузка базовой версии
+
+@CYLS   EQU 23735       ;Цилиндров
+@HEADS  EQU 23737       ;Головок
+@SECS   EQU 23738       ;Секторов
+
+@FLAG   EQU 23739       ;Регистр состояния
+
+@SEC    EQU 23740       ;Сектор
+@CYL    EQU 23741       ;Цилиндр L
+@CYLH   EQU 23742       ;Цилиндр H
+@HEAD   EQU 23743       ;Головка
+
+@IMAGE  EQU 23744       ;Номер образа
+@PAGE   EQU 23749       ;Содержимое портов памяти
+@FLAGC  EQU 23751       ;Копия регистра состояния
+
+;Дополнительные системные переменные
+;23735 Число логических цилиндров (L)
+;23736 Число логических цилиндров (H)
+;23737 Число логических головок
+;23738 Число логических секторов
+;23739 Флаг 76543210 регистр состояния
+;           ::::::++ Вертуальный диск на A:00, B:01, C:10, D:11
+;           :::::+ Резерв
+;           ::::+ MASTER подключен 0:нет, 1:да
+;           :::+ Выбор 0:MASTER, 1:SLAVE
+;           ::+ Винт опознан 0:нет, 1:да
+;           :+ Адресация 0:CHS, 1:LBA
+;           + Вертуальный диск как 0:RAMDISK, 1:образ
+;23740 Номер сектора LBA [ 7: 0]
+;23741 Номер сектора LBA [15: 8]
+;23742 Номер сектора LBA [23:16]
+;23743 Номер сектора LBA [31:24]
+;23744 Номер образа (L)
+;23745 Номер образа (H)
+;23746 RET
+;23747 Не используется для совместимости
+;23748 Не используется для совместимости
+;23749 Содержимое порта #7FFD
+;23750 Содержимое порта #FDFD
+;23751 Инверсная копия регистра состояния
+
+;Корректирование
+        ORG 127+@BASE
+        LD BC,#0540     ;Установка RASP и PIP
+
+        ORG 225+@BASE
+        LD HL,#0223     ;Установка REPDEL и REPPER
+
+        ORG 805+@BASE   ;Ввод дополнительной таблицы команд
+        JP C,FIX10-@BASE
+
+        ORG 864+@BASE
+        DB 22,1,5       ;Текст заставки
+        DB "  TR-DOS Ver 5.31  "
+        DB 13,13
+        DB 127," 1986 Technology Research Ltd."
+        DB 22,5,6
+        DB " Adapted Version ",0
+
+        ORG 8118+@BASE
+        JP FORMT6-@BASE ;Отключение опроса на повторный формат
+
+        ORG 4206+@BASE
+        LD HL,22560     ;Цветные полосы для заставки
+        LD B,26
+        ORG 4233+@BASE
+        LD HL,16441
+
+        ORG 15408+@BASE
+        IN A,(#1F)      ;Доступ к портам как у ATM,GRM,ZS
+        RET 
+        OUT (#1F),A
+L1      IN A,(#FF)
+        AND #80
+        JR Z,L1
+        RET 
+        ORG 16368+@BASE
+        OUT (C),A
+        RET 
+        IN A,(C)
+        RET 
+
+        ORG 4096+@BASE
+        DB 22,8,1,13    ;Позиция печати
+        DB "Interface one found"
+
+        ORG 4400+@BASE
+        DB " File name  Sec Start Size  Line",0
+
+        ORG 4283+@BASE
+        DB 16
+
+        ORG 4809+@BASE
+        INC B           ;Позиция печати к-ва секторов
+        CP 100
+        JR NC,L2
+        INC B
+        CP 10
+        JR NC,L2
+        INC B
+L2      LD A,32
+
+        ORG 12800+@BASE
+        LD HL,L4-@BASE  ;Форматирование
+        RST 24
+        LD A,(23798)
+        JP FIX9-@BASE
+        NOP 
+
+        ORG 12844+@BASE
+L4      DB "Format for drive ",0
+L5      DB 13,"(T)urbo,(N)ormal,(Q)uick?",0
+
+;Печать числа из HL
+        ORG 4445+@BASE
+NUMB    LD E,#20        ;С пробелами вид:___34
+NUM     LD BC,#D8F0     ;10000
+        CALL NUM1-@BASE
+        LD BC,#FC18     ;1000
+        CALL NUM1-@BASE
+        LD BC,#FF9C     ;100
+        CALL NUM1-@BASE
+        LD C,#F6        ;10
+        CALL NUM1-@BASE
+        LD A,L          ;1
+NUM4    ADD A,#30
+        RST 16
+        RET 
+NUM3    LD A,E
+        AND A
+        RET M
+        RST 16
+        RET 
+NUM1    XOR A
+NUM2    ADD HL,BC
+        INC A
+        JR C,NUM2
+        SBC HL,BC
+        DEC A
+        JR Z,NUM3
+        LD E,#30
+        JR NUM4
+NUMA    LD E,#FF        ;Без пробелов вид:34
+        JR NUM
+
+;Определение текущей страницы
+PAGE    LD BC,#7DFD     ;Порт конфигурации
+        IN A,(C)
+        AND 191         ;Бит 6=0 доступ к портам памяти
+        OUT (C),A
+        LD B,#7F        ;Порт памяти
+        IN A,(C)        ;Чтение из #7FFD
+        LD B,C
+        IN B,(C)        ;Чтение из #FDFD
+        LD C,A
+        LD (@PAGE),BC
+        RET 
+
+;Исправление ошибок
+        ORG 1279+@BASE
+        CALL NZ,15819   ;Команда CAT
+
+        ORG 16063+@BASE
+        CALL FIX1-@BASE ;Чтение/запись (ZF#3)
+
+        ORG 16097+@BASE
+        LD A,(23831)    ;Чтение адресного маркера
+
+        ORG 16123+@BASE
+        JP M,56         ;Потеря байта
+
+        ORG 1042+@BASE
+        JP FIX2-@BASE   ;Обработка ошибки DISK ERROR
+
+        ORG 1152+@BASE
+        CP 16           ;К-во потоков
+
+        ORG 1604+@BASE
+        JP Z,10019      ;Сообщение DIRECTORY FULL
+
+        ORG 1718+@BASE
+        JP FIX3-@BASE   ;Команда COPY *,*
+        ORG 1488+@BASE
+        DB 0,0
+        RET NZ
+
+        ORG 6269+@BASE
+        JP Z,7450       ;ENTER после LOAD будет ERROR
+
+        ORG 6455+@BASE
+        LD A,(23824)    ;Команда PEEK чтение сектора без мусора
+        OR A
+        NOP 
+
+        ORG 6579+@BASE
+        LD (23829),A    ;Флаг состояния рабочей области
+
+        ORG 7273+@BASE
+        OR B
+
+        ORG 6327+@BASE
+        JP FIX4-@BASE   ;Запуск кодовых файлов
+
+        ORG 7501+@BASE  ;Запуск BOOT по RUN
+        CALL FIX11-@BASE
+
+        ORG 7510+@BASE
+        LD A,(23781)
+        CP "D"
+        JP Z,7450
+        CP "B"
+        JP FIX5-@BASE
+
+        ORG 16285+@BASE
+        JP 16147        ;Для обновления числа попыток
+
+        ORG 15669+@BASE
+        JP FIX7-@BASE   ;Очистка нижних строк при входе в DOS
+
+        ORG 8528+@BASE
+        LD (IY+0),255
+        EI 
+        JP FIX8-@BASE   ;Редактор командной строки
+
+        ORG 15945+@BASE
+        JP 15770        ;Позиционирование
+
+        ORG 15960+@BASE
+        CALL 15770      ;Позиционирование
+
+;Ускорение работы
+        ORG 43+@BASE
+        INC HL          ;Быстрая очистка памяти
+        LD B,H
+        LD C,L
+        LD SP,HL        ;HL,BC,SP=0
+        JR L3
+        DW #FFFF
+        ORG 58+@BASE
+L3      PUSH BC,BC,BC,BC
+        PUSH BC,BC,BC,BC
+        LD HL,#A4FF
+        ADD HL,SP
+        JR C,L3
+
+;===============================================================
+;       ORG 15950+@BASE
+;       JP FIX6-@BASE   ;Корекция времени перемещения головки
+;       NOP
+
+;       ORG 16011+@BASE
+;       CALL NZ,15664   ;Восстановление позиционир. без задержки
+;---------------------------------------------------------------
+        ORG 15943+@BASE ;Тут как в 5.04H
+        LD A,24         ;Указываем скорость перем. головки
+
+        ORG 15958+@BASE
+        LD A,24         ;Указываем скорость перем. головки
+
+        ORG 16300+@BASE
+        NOP             ;Скорость не меняем
+;===============================================================
+        ORG 12176+@BASE
+        LD HL,#0808     ;Тип дисководов
+        JP FIX12-@BASE
+        LD HL,#FFFF
+
+        ORG 15907+@BASE
+        LD A,16         ;Тест дисковода до 16 дорожки
+
+;       ORG 15869+@BASE
+;       LD A,80         ;Задержка в 226805 тактов
+
+;       ORG 16147+@BASE
+;       LD D,5          ;К-во попыток чтения/записи при ошибке
+
+;RAM-диск
+        ORG 7789+@BASE
+        JP FIX13-@BASE
+
+        ORG 7915+@BASE  ;Выбор форматирования
+        CALL FORMT-@BASE
+
+        ORG 13068+@BASE ;Форматирование дорожки
+        JP FORMT1-@BASE
+
+        ORG 611+@BASE
+        CALL TEST-@BASE
+
+        ORG 15819+@BASE
+        JP SEL-@BASE
+
+        ORG 8525+@BASE
+        CALL COM3-@BASE
+
+;Дополнительный код
+        ORG 2053+@BASE
+FIX1    PUSH HL
+        PUSH AF
+        CALL 15880
+        LD B,A
+        POP AF
+        POP HL
+        JP 15940
+
+FIX2    LD A,7                  ;Код ошибки DISK ERROR
+        JP 7242
+
+FIX3    PUSH AF
+        CALL 1483
+        POP AF
+        JP NZ,985
+        JP 1721
+
+FIX4    LD (23840),HL
+        LD DE,(23787)
+        JP 6331
+
+FIX5    JP Z,298
+        LD HL,F1-@BASE
+        LD (23834),HL
+        JP 467
+F1      CALL 562
+        LD BC,(23840)
+        PUSH BC
+        RET 
+;---------------------------------------------------------------
+;FIX6   PUSH AF
+;       LD A,(23758)
+;       OR A
+;       JR Z,F2
+;       POP AF          ;При записи секторов
+;       PUSH BC
+;       LD B,A
+;       IN A,(63)
+;       JP 15954
+;F2     POP AF          ;При чтении секторов
+;       IN A,(31)
+;       AND 128
+;       JP 15956
+;---------------------------------------------------------------
+FIX7    CALL 7583
+        JP 569
+
+FIX8    RES 5,(IY+1)
+        RST 32
+        DW #15D4
+        CP 7
+        JR NZ,F3
+        LD HL,200
+        LD D,H
+        LD E,(IY-1)
+        RST 32
+        DW #03B5
+        CALL 8490
+        LD HL,(23641)
+        LD A,13
+        LD BC,0
+        CPIR 
+        DEC HL
+        LD (23643),HL
+        INC HL
+        INC HL
+        LD (HL),128
+F6      RST 32
+        DW #15D4
+F3      PUSH AF
+        LD HL,200
+        LD D,H
+        LD E,(IY-1)
+        RST 32
+        DW #03B5
+        POP AF
+        CP 24
+        JR NC,F4
+        CP 7
+        JR C,F4
+        CP 16
+        JR C,F5
+        RST 32
+        DW #0F58
+        JR F6
+F4      RST 32
+        DW #0F81
+        JR F6
+F5      CP 7
+        JR Z,F6
+        CP 13
+        RET Z
+        CP 10
+        JR Z,F6
+        CP 11
+        JR Z,F6
+        RST 32
+        DW #0F92
+        JR F6
+
+        ORG #08B4+@BASE
+        DB 13,"Message:"
+        DB 13,"Base Version 5.04T By CRAFT,1991"
+        DB 13,"Adapted By V.V.Matlash,2004-2005",0
+
+        ORG #0A01+@BASE
+FIX9    ADD A,"A"       ;Символ диска
+        CALL 15746
+        CALL COM3-@BASE
+        LD HL,L5-@BASE
+        RST 24
+L9      CALL 4178       ;Ввод клавиши
+        OR A
+        JP Z,467
+        CP "T"
+        JP Z,12823      ;TURBO
+        CP "N"
+        JP Z,12811      ;NORMAL
+        CP "Q"
+        JR NZ,L9        ;QUICK
+        POP DE          ;Снять адрес возврата
+        CALL 15889      ;Тип дисковода
+        AND 128
+        LD A,40
+        JR Z,L7
+        LD A,80
+L7      LD (23767),A    ;К-во дорожек
+        CALL TST-@BASE
+        JR NZ,L6        ;Физический диск
+        LD DE,16        ;Очищаем 16 секторов
+        JP FORMT4-@BASE ;Работа с вертуальным диском
+
+L6      CALL 15768      ;Восстановление
+        LD A,(23773)    ;Одна сторона ?
+        CP "$"
+        JR Z,L8
+        LD A,128        ;Две стороны
+        LD (23770),A
+L8      CALL 7868       ;Обнуление 23766 сбойные сектора
+        CALL FILL-@BASE ;Очистка буфера
+        LD D,B
+        LD E,B
+        LD A,255
+        LD (23758),A    ;Признак записи
+        LD (23796),DE
+
+L10     LD B,1
+        LD HL,23845
+        CALL 7787       ;Запись сектора
+        LD A,(23796)
+        OR A
+        JR NZ,L10       ;И так все 16
+        JP 7979
+
+FIX10   LD A,13         ;ENTER ?
+        CP D
+        JP Z,467        ;Да
+        LD A,"."
+        CP D
+        JP Z,COM-@BASE
+        JP 7450         ;Вывод ERROR
+
+FIX11   CALL 1067
+        JP Z,635
+        JP 6272
+
+FIX12   LD (23802),HL
+        LD (23804),HL
+        JP 12182
+
+;---------------------------------------------------------------
+FIX13   CALL TST-@BASE
+        JR Z,L11        ;Эмуляция
+        LD A,(23758)    ;Признак операции
+        CALL 7734       ;Чтение индексной области дорожки
+        JP 7792
+
+L11     POP HL          ;Восстановление адреса загрузки/записи
+        POP BC          ;и количества секторов
+RW      XOR A
+        OR B            ;Количество секторов равно 0 ?
+        RET Z           ;если да, то возврат
+        LD A,(@FLAG)
+        BIT 7,A         ;Работаем с HDD ?                    HDD
+        JR NZ,HDRW
+
+        DI 
+RDSV    PUSH BC
+        PUSH HL
+        CALL SEC-@BASE
+        POP HL
+        INC H
+        PUSH HL
+        LD HL,23796
+        LD A,16
+        INC (HL)
+        CP (HL)
+        JR NZ,L12
+        LD (HL),0
+        INC HL
+        INC (HL)
+L12     POP HL
+        POP BC
+        DJNZ RDSV
+        EI 
+        RET 
+
+HDRW
+;       LD A,(23797)
+;       CP 160
+;       RET NC
+
+        DI 
+HDRDSV  PUSH BC
+        PUSH HL
+        CALL HDSEC-@BASE
+        POP HL
+        INC H
+        PUSH HL
+        LD HL,23796
+        LD A,16
+        INC (HL)
+        CP (HL)
+        JR NZ,HDL12
+        LD (HL),0
+        INC HL
+        INC (HL)
+HDL12   POP HL
+        POP BC
+        DJNZ HDRDSV
+        EI 
+        RET 
+
+;HL=адрес данных
+SEC     LD DE,(23796)
+        LD A,H
+        CP #BF
+        JR C,RDWR
+        LD A,#FF        ;Флаг операции
+        CALL SEC1-@BASE
+        LD A,(23758)    ;Флаг операции с секторами
+        OR A
+        JR Z,SEC2
+        LD DE,23845
+        LD BC,#0100
+        LDIR 
+        LD HL,23845
+        LD DE,(23796)
+        CALL RDWR-@BASE
+SEC3    LD A,0
+SEC1    EX AF,AF'
+        LD A,(23758)
+        EX AF,AF'
+        LD (23758),A
+        PUSH HL
+        PUSH DE
+        LD HL,23845
+        LD DE,#FF0F     ;Кеш-сектор для временного хранения    *
+        CALL RDWR-@BASE
+        POP DE
+        POP HL
+        EX AF,AF'
+        LD (23758),A
+        RET 
+
+SEC2    PUSH HL
+        LD HL,23845
+        CALL RDWR-@BASE
+        LD HL,23845
+        POP DE
+        LD BC,#0100
+        LDIR 
+        JR SEC3
+
+;Чтение/запись сектора  D=дорожка, E=сектор
+RDWR    CALL PAGE-@BASE
+        LD A,D          ;Дорожка
+        RRCA 
+        RRCA 
+        RRCA 
+        RRCA 
+        RRCA 
+        AND 7
+        OR 8            ;Установка памяти 8/2048K, 12/1024K    *
+        LD BC,#FDFD
+        OUT (C),A       ;Порт #FDFD
+        LD A,(@PAGE)
+        AND #F8
+        LD B,A
+        LD A,D
+        RRCA 
+        RRCA 
+        AND 7
+        OR B
+        LD B,#7F
+        OUT (C),A       ;Порт #7FFD
+        LD A,D
+        RRCA 
+        RRCA 
+        RRCA 
+        RRCA 
+        AND #30
+        ADD A,E
+        OR #C0
+        LD D,A
+        LD E,0
+        LD A,(23758)
+        AND A
+        JR NZ,RDWR1
+        EX DE,HL
+RDWR1   LD BC,#0100
+        LDIR 
+
+;Восстановление текущей страницы
+PAGER   LD BC,#7DFD     ;Порт конфигурации
+        IN A,(C)
+        OR 64           ;Бит 6=1 восстановить доступ к портам
+        OUT (C),A
+        LD A,(@PAGE+1)
+        LD B,C
+        OUT (C),A       ;#FDFD
+        LD A,(@PAGE)
+        LD B,#7F
+        OUT (C),A       ;#7FFD
+        RET 
+
+;Выбор устройства
+SEL     LD (23798),A    ;Устройство
+        CALL TST-@BASE
+        LD A,(23798)
+        JP NZ,15822
+
+;Остановка мотора дисковода
+        LD A,%11010000  ;Команда прерывания
+        OUT (31),A      ;Остановка контроллера
+        LD A,(23830)    ;Копия системного регистра
+        JP 697          ;Остановка мотора дисковода
+
+;---------------------------------------------------------------
+FORMT   CALL TST-@BASE
+        JP NZ,15768     ;Восстановление
+        POP DE          ;Снимаем адрес возврата
+        LD DE,2560
+        LD A,(@FLAG)
+        BIT 7,A
+        JR NZ,FORMT4
+        LD DE,4095      ;К-во секторов 4095/2048K, 2047/1024K *
+FORMT4  PUSH DE
+        CALL FILL-@BASE ;Очистка буфера
+        LD HL,0         ;Первая дорожка,сектор
+        LD (23796),HL
+        POP BC          ;К-во секторов для очистки
+FORMT2  PUSH BC
+        LD DE,(23796)
+        LD E,D          ;Логический номер дорожки
+        SRL E           ;/2
+        CALL 13022      ;Печать номера дорожки
+        LD A,#FF
+        LD (23758),A    ;Признак записи
+        LD HL,23845     ;Адрес данных для записи
+        LD B,1          ;Размер 1 сектор
+        CALL RW-@BASE
+        POP BC
+        DEC BC
+        LD A,B
+        OR C            ;CY=0
+        JR NZ,FORMT2
+        LD HL,2544
+        LD A,(@FLAG)
+        BIT 7,A         ;Работа с образом?                   HDD
+        JR NZ,FORMT5
+        LD HL,4079      ;Свободно секторов 4079/2048, 2031/1024*
+@RDSEC  EQU $-2
+FORMT5  LD A,22         ;Тип диска
+        JP 8021         ;Установка каталога диска
+
+FORMT1  LD A,(@FLAG)
+        AND 3
+        LD HL,23798
+        CP (HL)         ;Совпало ?
+        JP NZ,8189      ;Форматирование дорожки
+        RET 
+
+FORMT6  LD A,(@FLAG)
+        AND 3
+        LD HL,23798
+        CP (HL)
+        JP NZ,12907     ;Запрос повтора форматирования
+        JP 467
+
+;---------------------------------------------------------------
+;Очистка буфера
+FILL    LD HL,23845
+        LD DE,23846
+        LD BC,#00FF
+        LD (HL),B
+        LDIR 
+        RET 
+
+;Установка
+TEST    CALL 4206       ;Вывод цветных полос
+        CALL tst2-@BASE ;Тест
+        CALL HDPAR-@BASE
+
+;Вывод информации
+        LD HL,TXT1-@BASE
+        RST 24          ;Вывод "RAMDISK xxxx Sec."
+        LD HL,(@RDSEC-@BASE)
+        CALL NUMA-@BASE
+        LD HL,TXT2-@BASE
+        RST 24          ;Вывод "IDE HDD "
+        LD A,(@FLAG)
+        BIT 5,A
+        JR NZ,PINF2     ;Винт опознан
+        LD HL,#27E3
+        RST 24
+        RET 
+
+PINF2   LD HL,(@CYLH)   ;Вывод размера винта
+        CALL NUMA-@BASE
+        LD HL,TXT3-@BASE
+        RST 24          ;Вывод " Mb, "
+        LD HL,TXT4-@BASE
+        LD A,(@FLAG)
+        BIT 6,A
+        JR Z,PINF3      ;Вывод "LBA" или "CHS"
+        LD HL,TXT5-@BASE
+PINF3   RST 24
+        LD HL,TXT6-@BASE
+        RST 24          ;Вывод "Images of disk "
+        LD HL,(@SEC)
+        JP NUMA-@BASE   ;Вывод к-ва образов на винте
+
+;Тест HDC
+TST     PUSH HL
+        LD A,(@FLAGC)   ;Чтение инверсной копии
+        CPL 
+        LD HL,(@FLAG)
+        CP L            ;NZ-требуется инициалицация устройств
+        JR Z,TST1       ;Предположим что инициализация была
+        POP HL
+
+tst2    PUSH HL
+        PUSH DE
+        PUSH BC
+        LD A,%00000011  ;Вертуальный диск на D:
+        LD (@FLAG),A    ;Установка регистра состояния
+        CPL 
+        LD (@FLAGC),A
+        LD HL,0
+        LD (@IMAGE),HL  ;Установка номера образа
+        LD A,8
+        LD (23805),A    ;Время перемещения головки для D:
+        LD A,#83
+        LD (23755),A    ;Тип дисковода для D:
+        CALL HDTST-@BASE;Проверка наличия винта
+        POP BC
+        POP DE
+TST1    LD A,(@FLAG)
+        AND 3
+        LD HL,(23798)
+        CP L            ;Z-работаем с вертуальным диском
+        POP HL
+        RET 
+
+;---------------------------------------------------------------
+COM     CALL 1067       ;Второй символ ENTER ?
+        LD A,0
+        LD (23823),A    ;Нет ошибки
+        JR Z,COM1       ;Команда . CY=0 если ENTER
+        INC HL
+        INC HL
+        LD A,(HL)
+        CP ":"          ;символ : ?
+        LD DE,COM2-@BASE
+        JR Z,COM7      ;Команда ."x:"
+        LD DE,COM6-@BASE
+COM7    LD HL,23611
+        RES 7,(HL)      ;Выполняем проверку синтаксиса
+        CALL 10570      ;Создание буфера
+        JP 850
+
+COM2    CALL 7647
+        CALL 7541
+        CALL 1329
+        LD A,(DE)
+        CALL 1316
+        LD C,A
+        LD A,(@FLAG)
+        AND %11111100
+        OR C
+        LD (@FLAG),A    ;Установка обмена диска
+        CPL 
+        LD (@FLAGC),A
+        JP 993          ;Сообщение O.K.
+
+COM6    LD HL,(23825)
+        LD (23645),HL
+        RST 32
+        DW #0020
+        RST 32
+        DW #1C82
+        CALL 7541
+        CALL HDPAR-@BASE
+        CALL 7609       ;Снятие номера образа
+        LD HL,(@SEC)    ;К-во образов на винте
+        SCF             ;CY=1
+        SBC HL,BC       ;Номер образа < доступных на винте ?
+        JP C,16103      ;Ошибка NO DISK
+        LD (@IMAGE),BC  ;Новый номер образа
+        SCF             ;CY=1
+
+COM1    LD A,(@FLAG)
+        BIT 5,A         ;Винт опознан ?
+        JR Z,COM5       ;нет
+        SET 7,A         ;Используется образ диска
+        JR C,COM8
+        RES 7,A         ;Используется RAMDISK
+COM8    LD (@FLAG),A
+        CPL 
+        LD (@FLAGC),A
+        CPL 
+COM5    AND 3
+        LD (23833),A    ;Переключаем на вертуальный диск
+        LD (23798),A
+        JP 993          ;Завершение OK
+
+COM3    LD A,":"
+        RST 16
+        CALL TST-@BASE
+        JR NZ,COM4
+        LD HL,TXT7-@BASE;Печать "RAM"
+        LD A,(@FLAG)
+        BIT 7,A
+        JP Z,9991       ;Используется RAMDISK
+        BIT 5,A
+        JP Z,9991       ;Винт не опознан
+        LD HL,(@IMAGE)  ;Номер образа
+        CALL NUMA-@BASE ;Печать номера образа
+COM4    LD HL,TXT8-@BASE;Печать ">"
+        JP 9991
+
+;Вид приглашения
+;A:0>
+;A:>
+;A:RAM>
+
+INCLUDE "TRD531_B",17

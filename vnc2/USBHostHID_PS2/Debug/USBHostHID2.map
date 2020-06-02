@@ -1,0 +1,118 @@
+Future Technology Devices International Limited (c) 2007-2010, All Rights Reserved
+
+
+CPU_CORE =   VC2, CPU_RAM_SIZE= 16 KB, CPU_ROM_SIZE=256 KB
+
+Linker Version  = V1.0.1 Loader Version =  V1.0.1
+Mon May 25 16:14:17 2015
+
+
+=================================================================================================================
+
+SEGMENT_MAP    
+=================================================================================================================
+
+Start Address                  Segment Name                   Segment Size
+=================================================================================================================
+
+0003c0 .text                          000001710d
+0174cd .dataFlash                     0000000508
+000000 .dataRAM                       0000000508
+000508 .bss                           000000054e
+000a56 .HeapRAM                       00000031a8
+
+=================================================================================================================
+
+SYMBOL_TABLE   
+=================================================================================================================
+
+SYM ADDRESS PUBLIC SYM NAME                SYM TYPE   MEM TYPE FILE NAME            SYM SIZE  
+NOTE:L=LABEL F=FUNCTION 0=FLASH and 1=RAM
+=================================================================================================================
+
+0043a main                           F              0 USBHostHID2.obj      001d4
+0060e usbhost_connect_state          F              0 USBHostHID2.obj      000b6
+006c4 open_drivers                   F              0 USBHostHID2.obj      0002f
+006f3 attach_drivers                 F              0 USBHostHID2.obj      00001
+006f4 close_drivers                  F              0 USBHostHID2.obj      00015
+00709 message                        F              0 USBHostHID2.obj      00001
+0070a number                         F              0 USBHostHID2.obj      00001
+0070b USB_thread                     F              0 USBHostHID2.obj      0349f
+03baa PS2KB_thread                   F              0 USBHostHID2.obj      001d6
+03d80 PS2MS_thread                   F              0 USBHostHID2.obj      0015b
+00508 ReportID_MS                    L              1 USBHostHID2.obj      00028
+00530 hid_parser                     L              1 USBHostHID2.obj      00100
+00630 ReportID_tbl                   L              1 USBHostHID2.obj      00028
+00658 max_ReportID                   L              1 USBHostHID2.obj      00001
+00659 hc_iocb_class                  L              1 USBHostHID2.obj      00003
+0065c buf                            L              1 USBHostHID2.obj      00080
+006dc pDATA                          L              1 USBHostHID2.obj      00002
+006de hUsb                           L              1 USBHostHID2.obj      00004
+006e2 hid_parce_data                 L              1 USBHostHID2.obj      00047
+00729 MS_OK                          L              1 USBHostHID2.obj      00001
+0072a hUART                          L              1 USBHostHID2.obj      00002
+0072c Xpos                           L              1 USBHostHID2.obj      00004
+00730 Ypos                           L              1 USBHostHID2.obj      00004
+00734 PS2_KB                         L              1 USBHostHID2.obj      00033
+00767 PS2_MS                         L              1 USBHostHID2.obj      0000e
+00775 pPS2_KB                        L              1 USBHostHID2.obj      00002
+00777 ifInfo                         L              1 USBHostHID2.obj      00007
+0077e pParser                        L              1 USBHostHID2.obj      00002
+00780 hUSBHOST_1                     L              1 USBHostHID2.obj      00002
+00782 hUSBHOST_2                     L              1 USBHostHID2.obj      00002
+00784 hid_data                       L              1 USBHostHID2.obj      00047
+007cb hid_path                       L              1 USBHostHID2.obj      00029
+007f4 sem_list                       L              1 USBHostHID2.obj      00002
+007f6 hid_Bdata                      L              1 USBHostHID2.obj      00047
+0083d hid_Wdata                      L              1 USBHostHID2.obj      00047
+00884 hid_Xdata                      L              1 USBHostHID2.obj      00047
+008cb hid_Ydata                      L              1 USBHostHID2.obj      00047
+00912 tcbFIRMWARE                    L              1 USBHostHID2.obj      00002
+00914 phid_data                      L              1 USBHostHID2.obj      00002
+00916 hGPIO_PORT_A                   L              1 USBHostHID2.obj      00002
+00918 phid_Bdata                     L              1 USBHostHID2.obj      00002
+0091a phid_Wdata                     L              1 USBHostHID2.obj      00002
+0091c phid_Xdata                     L              1 USBHostHID2.obj      00002
+0091e phid_Ydata                     L              1 USBHostHID2.obj      00002
+111f9 iomux_setup                    F              0 USBHostHID2_iomux.obj 000e4
+112dd ResetParser                    F              0 hidparser.obj        00266
+11543 ResetLocalState                F              0 hidparser.obj        00065
+115a8 GetReportOffset                F              0 hidparser.obj        003c4
+1196c FormatValue                    F              0 hidparser.obj        0004e
+119ba HIDParse                       F              0 hidparser.obj        02bf4
+145ae GetValue                       F              0 hidparser.obj        002c9
+14877 GetValueXY                     F              0 hidparser.obj        00451
+14cc8 ReportID_DataLength            F              0 hidparser.obj        000bf
+14d87 ReportID_Offset                F              0 hidparser.obj        000bf
+14e46 FindReport_max_ID              F              0 hidparser.obj        000b8
+14efe FindMouse_XYW                  F              0 hidparser.obj        0013a
+15038 FindMouse_Buttons              F              0 hidparser.obj        00219
+00312 eol                            L              1 hidparser.obj        00002
+00317 ItemSize                       L              1 hidparser.obj        00004
+15251 PS2dev_init                    F              0 ps2dev.obj           0002d
+1527e PS2dev_unlock                  F              0 ps2dev.obj           0000f
+1528d LED_ON                         F              0 ps2dev.obj           0003f
+152cc LED_OFF                        F              0 ps2dev.obj           0003f
+1530b delayMicroseconds              F              0 ps2dev.obj           00001
+1530c golo                           F              0 ps2dev.obj           00052
+1535e gohi                           F              0 ps2dev.obj           0005f
+153bd digitalRead                    F              0 ps2dev.obj           00075
+15432 PS2dev_host_req                F              0 ps2dev.obj           00037
+15469 PS2dev_write                   F              0 ps2dev.obj           001b8
+15621 PS2dev_write_c                 F              0 ps2dev.obj           001d4
+157f5 PS2dev_read                    F              0 ps2dev.obj           0018b
+15980 PS2KB_write                    F              0 ps2dev.obj           0015a
+00a4e GPIO_Lock                      L              1 ps2dev.obj           00006
+00a54 port_data                      L              1 ps2dev.obj           00001
+00a55 port_mode                      L              1 ps2dev.obj           00001
+15ada PS2_mouse_init                 F              0 ps2_mouse.obj        001bb
+15c95 ack                            F              0 ps2_mouse.obj        00016
+15cab MS_wr_packet                   F              0 ps2_mouse.obj        005f8
+162a3 MS_cmd                         F              0 ps2_mouse.obj        00386
+16629 SET_BIT                        F              0 ps2_keyboard.obj     00041
+1666a CHECK_BIT                      F              0 ps2_keyboard.obj     0003b
+166a5 PS2_keyboard_init              F              0 ps2_keyboard.obj     0009e
+16743 KBParse                        F              0 ps2_keyboard.obj     00d41
+17484 USB_PS2                        F              0 ps2_keyboard.obj     00049
+00357 Fkeys                          L              1 ps2_keyboard.obj     00008
+0035f USB_PS2_tb                     L              1 ps2_keyboard.obj     00100

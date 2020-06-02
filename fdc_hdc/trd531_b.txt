@@ -1,0 +1,470 @@
+        MAIN "TRD531_A",16
+;IDE------------------------------------------------------------
+;Описание портов адаптера
+DC      EQU #E4         ; O Регистр управления устройством
+DR      EQU #8C         ;IO Регистр данных D[7:0]
+DRH     EQU #88         ;IO Защелка
+ER      EQU #9C         ;I  Регистр ошибок
+FR      EQU #9C         ; O Регистр свойств
+SC      EQU #AC         ;IO Регистр счетчика секторов
+SN      EQU #BC         ;IO Регистр номера сектора
+CL      EQU #CC         ;IO Регистр мл. байта номера цилиндра
+CH      EQU #DC         ;IO Рекистр ст. байта номера цилиндра
+DH      EQU #EC         ;IO Регистр номера устройства и головки
+SR      EQU #FC         ;I  Регистр состояния
+CR      EQU #FC         ; O Регистр команд
+
+;Коды ошибок и названия
+OK      EQU 0           ;Удачное завершение
+AMNF    EQU 1           ;Адресный маркер не найден        AMN
+TK0NF   EQU 2           ;Не найден нулевой трек           T0N
+ABRT    EQU 3           ;Команда отвергнута               ABR
+IDNF    EQU 4           ;Сектор не найден                 IDN
+UNC     EQU 5           ;Не обработанная фатальная ошибка UNC
+DF      EQU 6           ;Ошибка аппаратуры                DF
+NRDY    EQU 7           ;Нет готовности аппаратуры        NRD
+;---------------------------------------------------------------
+;Выход по ошибке
+HDERR   LD HL,@FLAG
+        SET 3,(HL)      ;Отключение устройства
+        LD A,(HL)
+        CPL 
+        LD (@FLAGC),A
+        EI 
+        RET 
+
+;HDD тест
+HDTST   LD A,(@FLAG)
+        BIT 5,A         ;HDD опознан ?
+        RET NZ          ;да
+        DI 
+        BIT 3,A         ;HDD подключен ?
+        JR NZ,HDERR     ;нет
+        IN A,(SR)       ;Проверяем подключен ли шлейф ?
+        INC A
+        JR Z,HDERR      ;нет
+        CALL HDBUSY-@BASE
+        JR NZ,HDERR
+        LD A,#55
+        OUT (CH),A      ;CH цилиндра ст.
+        CPL 
+        OUT (CL),A      ;CL цилиндра мл.
+        IN A,(CH)       ;CH цилиндра ст.
+        CP #55
+        JR NZ,HDERR     ;Ошибка при работе с регистрами
+        IN A,(CL)
+        CP #AA
+        JR NZ,HDERR
+;------
+hdtst2  CALL HDBUSY-@BASE
+        JR NZ,HDRES
+        LD A,%10100000  ;0 CHS 0 DEV0 0 0 0 0
+        OUT (DH),A      ;Выбор устройства
+        CALL HDDRDY-@BASE
+        JR NZ,HDRES     ;Ошибка
+        LD A,#EC        ;Команда - идентификация устройства
+        OUT (CR),A      ;Подача команды
+        CALL HDDRQ-@BASE
+        JR Z,hdtst3
+        CALL HDRES-@BASE
+        JR hdtst2
+
+;Сброс винта
+HDRES   LD BC,DC
+        LD A,%00000110  ;сброс
+        OUT (C),A       ;DC
+PAUSE   DJNZ PAUSE
+        LD A,%00000010
+        OUT (C),A
+        IN A,(SR)
+        BIT 7,A
+        JR NZ,HDRES
+        RET 
+
+;Установка параметров
+hdtst3  LD B,2
+        CALL RWORDS-@BASE
+        LD (@CYLS),HL
+        LD B,2
+        CALL RWORDS-@BASE
+        LD A,L
+        LD (@HEADS),A
+        LD B,3
+        CALL RWORDS-@BASE
+        LD A,L
+        LD (@SECS),A
+        LD B,43
+        CALL RWORDS-@BASE
+        LD E,H
+        LD B,78
+        CALL RWORDS-@BASE
+        CALL RWORDS-@BASE
+        BIT 1,E
+        LD A,(@FLAG)
+        SET 6,A         ;LBA
+        JR NZ,hdtst1
+        RES 6,A         ;CHS
+hdtst1  OR %10100000    ;Винт опознан
+        LD (@FLAG),A
+        CPL 
+        LD (@FLAGC),A
+        EI 
+        RET 
+
+;Чтение слова
+RWORDS  IN A,(DR)
+        LD L,A
+        IN A,(DRH)
+        LD H,A
+        DJNZ RWORDS
+        RET 
+
+;Вывод сообщения о ошибке
+HDER    PUSH AF
+        CALL HDRES-@BASE
+        POP AF
+        LD DE,ERR-@BASE-4
+        LD L,A
+        LD H,0
+        ADD HL,HL
+        ADD HL,HL
+        ADD HL,DE
+        CALL 10031
+        LD A,7
+        LD DE,7242
+        PUSH DE
+        EI 
+        RET 
+
+;Чтение/запись сектора
+;(23758):флаг операции
+HDSEC   LD (23808),HL
+        CALL HDSET-@BASE
+        CALL HDDRDY-@BASE
+        JR NZ,HDER
+        LD BC,CR
+        LD A,(23758)
+        OR A
+        JR Z,hdsec1
+
+;Запись сектора
+        LD A,#30
+        OUT (C),A       ;Команда
+        CALL HDDRQ-@BASE
+        JR NZ,HDER
+        LD HL,(23808)   ;Адрес
+        LD BC,DR
+        OTIR            ;Вывод массива данных
+        CALL HDDRDY-@BASE
+        JR NZ,HDER
+        RET 
+
+;Чтение сектора
+hdsec1  LD A,#20
+        OUT (C),A       ;Команда
+        CALL HDDRQ-@BASE
+        JR NZ,HDER
+        LD HL,(23808)   ;Адрес
+        LD BC,DR
+        INIR            ;Чтение
+        CALL HDBUSY-@BASE
+        JR NZ,HDER
+        RET 
+
+;Ожидание освобождения устройства
+HDBUSY  LD HL,#FF00     ;К-во опросов
+hdbusy2 LD BC,SR        ;SR рег. состояния
+        IN E,(C)
+        BIT 7,E         ;BSY указывает на занятость устройства
+        JR Z,hdbusy3    ;Появился сигнал свободен
+hdbusy1 DJNZ hdbusy1    ;Задержка
+        DEC HL
+        LD A,L
+        OR H
+        JR NZ,hdbusy2   ;0 ?
+        LD A,NRDY       ;Устройство не откликается
+        OR A
+        RET 
+hdbusy3 XOR A
+        BIT 0,E         ;Ошибки нет?
+        CALL NZ,HDERRD-@BASE
+        OR A            ;Проверка на ноль
+        RET 
+
+;Ожидание готовности к обмену словом или байтом данных
+HDDRQ   LD BC,SR        ;SR рег. состояния
+hddrq1  IN E,(C)
+        BIT 7,E
+        JR NZ,hddrq1
+        BIT 0,E
+        JR NZ,hdbusy3
+        BIT 3,E
+        JR Z,hddrq1     ;DRQ=1 готов
+        XOR A
+        RET 
+
+;Ожидание готовности принять команду
+HDDRDY  LD BC,SR
+hddrdy1 IN E,(C)
+        BIT 7,E
+        JR NZ,hddrdy1
+        BIT 0,E
+        JR NZ,hdbusy3
+        BIT 6,E
+        JR Z,hddrdy1    ;DRDY=1 готов
+        XOR A
+        RET 
+
+;Расшифровка ошибки
+HDERRD  LD BC,ER        ;ER рег. ошибки
+        IN B,(C)
+        BIT 0,B
+        LD A,AMNF       ;Не найден адресный маркер
+        RET NZ
+        BIT 1,B
+        LD A,TK0NF
+        RET NZ
+        BIT 3,B
+        LD A,ABRT
+        RET NZ
+        BIT 4,B
+        LD A,IDNF       ;Индентификатор сектора не найден
+        RET NZ
+        BIT 6,B
+        LD A,UNC
+        RET NZ
+        BIT 5,E
+        LD A,DF          ;Отказ устройства
+        RET NZ
+        LD A,NRDY
+        RET 
+
+;Рассчет параметров HDD
+HDPAR   LD BC,(@CYLS)   ;Цилиндров
+        LD DE,(@HEADS)  ;Головок
+        LD D,0          ;HLBC=HLBC*DE
+        CALL MUL16-@BASE
+        LD DE,(@SECS)   ;Секторов
+        LD D,0          ;HLBC=HLBC*DE
+        CALL MUL32-@BASE
+        LD DE,512       ;HLBC=HLBC*DE
+        CALL MUL32-@BASE
+        LD DE,1024      ;Размер в Кбайтах HLBC=HLBC/DE
+        CALL DIV32-@BASE
+        PUSH HL
+        PUSH DE
+        PUSH BC
+        LD DE,1280      ;Размер образа в Кбайтах
+        CALL DIV32-@BASE
+        LD (@SEC),BC    ;К-во образов на винте
+        POP BC
+        POP DE
+        POP HL
+        CALL DIV32-@BASE
+        LD (@CYLH),BC   ;Размер винта в Мбайтах
+        RET 
+
+;STI в LBA геометрию
+STILBA  LD HL,(23796)
+        LD C,H
+        LD H,0
+        LD B,H
+        PUSH HL
+        SLA C
+        RL B
+        SLA C
+        RL B
+        SLA C
+        RL B
+        SLA C
+        RL B
+        POP HL
+        ADD HL,BC
+        PUSH HL
+        LD DE,2560      ;Размер образа диска
+        LD BC,(@IMAGE)  ;Номер образа диска
+        CALL MUL16-@BASE;HLBC*DE=HLBC
+        POP DE
+        EX DE,HL
+        ADD HL,BC
+        EX DE,HL
+        LD BC,0
+        ADC HL,BC
+        LD (@CYLH),HL   ;LBA [31:16]
+        LD (@SEC),DE    ;LBA [15:0]
+        RET 
+
+;LBA в CHS геометрию
+LBACHS  LD BC,(@HEADS)  ;B=SECS, C=HEADS
+        LD E,B          ;E=SECS
+        LD B,0
+        LD D,B          ;0
+        CALL MUL16-@BASE;HLBC=BC*DE HEADS*SECS
+        LD E,C
+        LD D,B          ;DE=HEADS*SECS
+        LD BC,(@SEC)    ;LBA [15:0]
+        LD HL,(@CYLH)   ;LBA [31:16]
+        CALL DIV32-@BASE;HLBC=HLBC/DE
+        PUSH BC         ;BC= CYL=LBA/(SECS*HEADS)
+        CALL MUL32-@BASE;HLBC=HLBC*DE CYL*(SECS*HEADS)
+        PUSH HL
+        PUSH BC
+        EX DE,HL
+        LD HL,(@SEC)    ;LBA [15:0]
+        OR A            ;CY=0
+        SBC HL,BC       ;               LBA-(CYL*(SECS*HEADS))
+        LD C,L
+        LD B,H
+        LD HL,(@CYLH)   ;LBA [31:16]
+        SBC HL,DE
+        LD DE,(@SECS)
+        LD D,0
+        CALL DIV32-@BASE;HLBC=HLBC/DE
+        PUSH BC         ;C= HEAD=(LBA-(CYL*(SECS*HEADS)))/SECS
+        LD A,(@SECS)
+        LD E,A          ;DE=SECS
+        CALL MUL16-@BASE;HLBC=BC*DE HEAD*SECS
+        POP DE          ;HEAD
+        LD A,E
+        POP DE
+        EX DE,HL
+        ADD HL,BC
+        EX DE,HL
+        POP BC
+        ADC HL,BC       ;HLDE
+        LD C,L
+        LD B,H
+        LD HL,(@SEC)    ;LBA [15:0]
+        OR A
+        SBC HL,DE
+        LD (@HEAD),A
+        INC L           ;L= SEC=LBA-((HEAD*SECS)+(CYL*(SECS*
+        LD A,L          ;       *HEADS)))+1
+        LD (@SEC),A
+        POP HL          ;CYL
+        LD (@CYL),HL
+        RET 
+
+;Деление HLBC=HLBC/DE
+DIV16   LD HL,0
+DIV32   PUSH HL
+        LD HL,0
+        EX (SP),HL
+        LD A,B
+        LD B,32
+        RL C
+        RLA 
+        RL L
+        RL H
+DIV3    EX (SP),HL
+        RL L
+        RL H
+        JR C,DIV1
+        SBC HL,DE
+        JR NC,DIV2
+        ADD HL,DE
+DIV2    EX (SP),HL
+        CCF 
+DIV4    RL C
+        RLA 
+        RL L
+        RL H
+        DJNZ DIV3
+        LD B,A
+        POP AF
+        RET 
+DIV1    OR A
+        SBC HL,DE
+        EX (SP),HL
+        JR DIV4
+
+;Умножение HLBC=HLBC*DE
+MUL16   LD HL,0
+MUL32   PUSH HL
+        LD HL,0
+        EX (SP),HL
+        LD A,B
+        LD B,33
+        JR MUL1
+MUL3    EX (SP),HL
+        JR NC,MUL2
+        ADD HL,DE
+MUL2    RR H
+        RR L
+        EX (SP),HL
+MUL1    RR H
+        RR L
+        RRA 
+        RR C
+        DJNZ MUL3
+        LD B,A
+        POP AF
+        RET 
+
+        ORG #332C+@BASE
+;Установка параметров
+HDSET   CALL STILBA-@BASE
+        LD A,(@FLAG)
+        BIT 6,A
+        JR NZ,hdset1
+        CALL LBACHS-@BASE
+        CALL HDDRDY-@BASE
+        JP NZ,HDER-@BASE
+        LD BC,DH
+        LD A,(@HEADS)
+        DEC A
+        OR %10100000
+        OUT (C),A       ;D/H
+        LD A,(@SECS)    ;
+        OUT (SC),A      ;SC
+        LD A,#91
+        OUT (CR),A      ;CR регистр команд
+hdset1  CALL HDDRDY-@BASE
+        JP NZ,HDER-@BASE
+        LD A,(@FLAG)
+        AND %01000000
+        LD C,A
+        LD A,(@HEAD)
+        OR C
+        OR A,%10100000
+        OUT (DH),A      ;D/H
+        LD HL,(@CYL)
+        LD A,H
+        OUT (CH),A      ;CH
+        LD A,L
+        OUT (CL),A      ;CL
+        LD A,(@SEC)
+        OUT (SN),A      ;SN
+        LD A,#01
+        OUT (SC),A      ;SC
+        RET 
+
+;---------------------------------------------------------------
+TXT1    DB 22,10,1,13,"RAMDISK"," "+128
+TXT2    DB " Sec.",13,13,"IDE HDD"," "+128
+TXT3    DB " Mb,"," "+128
+TXT4    DB "CH","S"+128
+TXT5    DB "LB","A"+128
+TXT6    DB 13,13,"Images of Disk"," "+128
+TXT7    DB "RAM"
+TXT8    DB ">"+128
+
+
+ERR     DB 13,"AM","N"+128
+        DB 13,"T0","N"+128
+        DB 13,"AB","R"+128
+        DB 13,"ID","N"+128
+        DB 13,"UN","C"+128
+        DB 13,"DF"," "+128
+        DB 13,"NR","D"+128
+;--------------------------------
+;RAMDISK 65535 Sec.
+
+;IDE HDD 65535 Mb, LBA
+
+;Images of Disk 65535
+
+;--------------------------------
+;RAMDISK 65535 Sec.
+
+;IDE HDD not found
